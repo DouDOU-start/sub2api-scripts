@@ -152,8 +152,8 @@ func main() {
 		testErr := client.TestAccount(accountID, finalModel)
 		if testErr != nil {
 			fmt.Printf(" 失败: %v\n", testErr)
-			fmt.Printf("  禁用账号...")
-			if disableErr := client.DisableAccount(accountID, testErr.Error()); disableErr != nil {
+			fmt.Printf("  关闭调度...")
+			if disableErr := client.DisableSchedule(accountID, testErr.Error()); disableErr != nil {
 				fmt.Printf(" 失败: %v\n", disableErr)
 			} else {
 				fmt.Printf(" OK\n")

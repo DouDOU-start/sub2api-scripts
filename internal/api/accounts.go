@@ -140,11 +140,12 @@ func (c *Client) UpdateAccount(accountID int64, req UpdateAccountRequest) error 
 	return err
 }
 
-// DisableAccount 禁用账号并记录失败原因
-func (c *Client) DisableAccount(accountID int64, reason string) error {
+// DisableSchedule 关闭账号调度并记录失败原因
+func (c *Client) DisableSchedule(accountID int64, reason string) error {
 	notes := "测试失败: " + reason
+	schedulable := false
 	return c.UpdateAccount(accountID, UpdateAccountRequest{
-		Status: "inactive",
-		Notes:  &notes,
+		Schedulable: &schedulable,
+		Notes:       &notes,
 	})
 }

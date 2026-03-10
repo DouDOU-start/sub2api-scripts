@@ -91,6 +91,7 @@ type UpdateAccountRequest struct {
 	ProxyID                *int64  `json:"proxy_id,omitempty"`
 	GroupIDs               []int64 `json:"group_ids,omitempty"`
 	Concurrency            *int    `json:"concurrency,omitempty"`
+	Schedulable            *bool   `json:"schedulable,omitempty"`
 	Status                 string  `json:"status,omitempty"`
 	Notes                  *string `json:"notes,omitempty"`
 	ConfirmMixedChannelRisk bool   `json:"confirm_mixed_channel_risk,omitempty"`

@@ -1,3 +1,5 @@
 .env
-accounts.txt
+accounts*.txt
 batch-add-result.txt
+/claude-batch-add
+/claude-terms-scan
