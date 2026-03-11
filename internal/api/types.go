@@ -81,6 +81,7 @@ type CreateAccountRequest struct {
 	Type        string         `json:"type"`
 	Credentials map[string]any `json:"credentials"`
 	Concurrency int            `json:"concurrency"`
+	Priority    int            `json:"priority"`
 	Extra       map[string]any `json:"extra,omitempty"`
 	ProxyID     *int64         `json:"proxy_id,omitempty"`
 	GroupIDs    []int64        `json:"group_ids,omitempty"`
@@ -88,13 +89,15 @@ type CreateAccountRequest struct {
 
 // UpdateAccountRequest 更新账号请求
 type UpdateAccountRequest struct {
-	ProxyID                *int64  `json:"proxy_id,omitempty"`
-	GroupIDs               []int64 `json:"group_ids,omitempty"`
-	Concurrency            *int    `json:"concurrency,omitempty"`
-	Schedulable            *bool   `json:"schedulable,omitempty"`
-	Status                 string  `json:"status,omitempty"`
-	Notes                  *string `json:"notes,omitempty"`
-	ConfirmMixedChannelRisk bool   `json:"confirm_mixed_channel_risk,omitempty"`
+	ProxyID                 *int64         `json:"proxy_id,omitempty"`
+	GroupIDs                []int64        `json:"group_ids,omitempty"`
+	Concurrency             *int           `json:"concurrency,omitempty"`
+	Priority                *int           `json:"priority,omitempty"`
+	Extra                   map[string]any `json:"extra,omitempty"`
+	Schedulable             *bool          `json:"schedulable,omitempty"`
+	Status                  string         `json:"status,omitempty"`
+	Notes                   *string        `json:"notes,omitempty"`
+	ConfirmMixedChannelRisk bool           `json:"confirm_mixed_channel_risk,omitempty"`
 }
 
 // CreatedAccount 创建账号返回

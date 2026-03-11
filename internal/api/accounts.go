@@ -89,7 +89,12 @@ func (c *Client) CookieAuth(sessionKey string, proxyID *int64) (*TokenInfo, erro
 
 // BuildCreateRequest 根据 token 信息构建创建账号请求
 func BuildCreateRequest(email string, token *TokenInfo, proxyID *int64, groupIDs []int64) CreateAccountRequest {
-	extra := map[string]any{}
+	extra := map[string]any{
+		"enable_tls_fingerprint":      true,
+		"session_id_masking_enabled":  true,
+		"cache_ttl_override_enabled":  true,
+		"cache_ttl_override_target":   "1h",
+	}
 	if token.OrgUUID != "" {
 		extra["org_uuid"] = token.OrgUUID
 	}
@@ -106,6 +111,7 @@ func BuildCreateRequest(email string, token *TokenInfo, proxyID *int64, groupIDs
 		Type:        "oauth",
 		Credentials: token.Raw,
 		Concurrency: 10,
+		Priority:    1,
 	}
 	if len(extra) > 0 {
 		req.Extra = extra

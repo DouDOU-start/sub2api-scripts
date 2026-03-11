@@ -180,41 +180,44 @@ func main() {
 	}
 }
 
-// handleExisting 处理已存在的账号：检查并补充代理、分组、容量
+// handleExisting 处理已存在的账号：同步代理、分组、容量、优先级、extra 配置
 func handleExisting(client *api.Client, email string, existing *api.Account, selectedProxy *int64, selectedGroupIDs []int64) AddResult {
-	needProxy := selectedProxy != nil && existing.ProxyID == nil
-	needGroups := len(selectedGroupIDs) > 0 && len(existing.GroupIDs) == 0
-	needConcurrency := existing.Concurrency == 0
-
-	if !needProxy && !needGroups && !needConcurrency {
-		fmt.Printf(" -> 已存在，跳过\n")
-		return AddResult{Email: email, Status: StatusSkipped, Detail: "账号已存在", AccountID: existing.ID}
-	}
-
 	var updates []string
 	req := api.UpdateAccountRequest{ConfirmMixedChannelRisk: true}
-	if needProxy {
+
+	if selectedProxy != nil && existing.ProxyID == nil {
 		req.ProxyID = selectedProxy
 		updates = append(updates, "代理")
 	}
-	if needGroups {
+	if len(selectedGroupIDs) > 0 && len(existing.GroupIDs) == 0 {
 		req.GroupIDs = selectedGroupIDs
 		updates = append(updates, "分组")
 	}
-	if needConcurrency {
+	if existing.Concurrency == 0 {
 		c := 10
 		req.Concurrency = &c
 		updates = append(updates, "容量")
 	}
 
+	// 始终同步优先级和 extra 配置
+	p := 1
+	req.Priority = &p
+	req.Extra = map[string]any{
+		"enable_tls_fingerprint":     true,
+		"session_id_masking_enabled": true,
+		"cache_ttl_override_enabled": true,
+		"cache_ttl_override_target":  "1h",
+	}
+	updates = append(updates, "配置")
+
 	desc := strings.Join(updates, "+")
-	fmt.Printf(" -> 已存在，补充%s...", desc)
+	fmt.Printf(" -> 已存在，同步%s...", desc)
 	if err := client.UpdateAccount(existing.ID, req); err != nil {
 		fmt.Printf(" 失败: %v\n", err)
 		return AddResult{Email: email, Status: StatusUpdateFail, Detail: err.Error(), AccountID: existing.ID}
 	}
 	fmt.Printf(" OK\n")
-	return AddResult{Email: email, Status: StatusUpdated, Detail: "补充" + desc, AccountID: existing.ID}
+	return AddResult{Email: email, Status: StatusUpdated, Detail: "同步" + desc, AccountID: existing.ID}
 }
 
 // readAccountLines 从文件或 stdin 读取账号行
