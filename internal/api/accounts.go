@@ -93,7 +93,7 @@ func BuildCreateRequest(email string, token *TokenInfo, proxyID *int64, groupIDs
 		"enable_tls_fingerprint":      true,
 		"session_id_masking_enabled":  true,
 		"cache_ttl_override_enabled":  true,
-		"cache_ttl_override_target":   "1h",
+		"cache_ttl_override_target":   "5m",
 	}
 	if token.OrgUUID != "" {
 		extra["org_uuid"] = token.OrgUUID

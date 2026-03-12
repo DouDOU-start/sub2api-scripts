@@ -206,7 +206,7 @@ func handleExisting(client *api.Client, email string, existing *api.Account, sel
 		"enable_tls_fingerprint":     true,
 		"session_id_masking_enabled": true,
 		"cache_ttl_override_enabled": true,
-		"cache_ttl_override_target":  "1h",
+		"cache_ttl_override_target":  "5m",
 	}
 	updates = append(updates, "配置")
 
