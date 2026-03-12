@@ -49,6 +49,19 @@ func (c *Client) FetchProxiesPaginated(status string) ([]Proxy, error) {
 	return all, nil
 }
 
+// CreateProxy 创建代理
+func (c *Client) CreateProxy(req CreateProxyRequest) (*Proxy, error) {
+	apiResp, err := c.Post("/api/v1/admin/proxies", req)
+	if err != nil {
+		return nil, err
+	}
+	var proxy Proxy
+	if err := json.Unmarshal(apiResp.Data, &proxy); err != nil {
+		return nil, fmt.Errorf("解析创建结果失败: %w", err)
+	}
+	return &proxy, nil
+}
+
 // ProxyTestResult 代理测试结果
 type ProxyTestResult struct {
 	Success   bool   `json:"success"`
@@ -56,6 +69,13 @@ type ProxyTestResult struct {
 	LatencyMs int64  `json:"latency_ms,omitempty"`
 	IPAddress string `json:"ip_address,omitempty"`
 	Country   string `json:"country,omitempty"`
+}
+
+// UpdateProxy 更新代理
+func (c *Client) UpdateProxy(proxyID int64, req UpdateProxyRequest) error {
+	path := fmt.Sprintf("/api/v1/admin/proxies/%d", proxyID)
+	_, err := c.Put(path, req)
+	return err
 }
 
 // DeleteProxy 删除代理

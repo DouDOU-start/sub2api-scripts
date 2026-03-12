@@ -40,10 +40,28 @@ type TokenInfo struct {
 
 // Proxy 代理
 type Proxy struct {
-	ID      int64  `json:"id"`
-	Name    string `json:"name"`
-	Address string `json:"address"`
-	Status  string `json:"status"`
+	ID       int64  `json:"id"`
+	Name     string `json:"name"`
+	Address  string `json:"address"`
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	Protocol string `json:"protocol"`
+	Status   string `json:"status"`
+}
+
+// CreateProxyRequest 创建代理请求
+type CreateProxyRequest struct {
+	Name     string `json:"name"`
+	Protocol string `json:"protocol"`
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	Username string `json:"username,omitempty"`
+	Password string `json:"password,omitempty"`
+}
+
+// UpdateProxyRequest 更新代理请求
+type UpdateProxyRequest struct {
+	Name *string `json:"name,omitempty"`
 }
 
 // Group 分组
