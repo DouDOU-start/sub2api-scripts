@@ -37,6 +37,7 @@ func newMenuModel(client *api.Client, model string) menuModel {
 		{
 			title: "账号管理",
 			items: []menuItem{
+				{name: "查看所有账号", desc: "查看所有账号的状态、调度、代理信息", run: runAccountList},
 				{name: "批量添加账号", desc: "从文件读取账号信息，批量添加到 sub2api", run: runAccountAdd},
 				{name: "协议状态扫描", desc: "扫描所有账号，识别需要接受协议的账号", run: runAccountScan},
 				{name: "批量更新缓存", desc: "批量更新所有账号的缓存 TTL 配置", run: runAccountCache},
@@ -46,8 +47,10 @@ func newMenuModel(client *api.Client, model string) menuModel {
 		{
 			title: "代理管理",
 			items: []menuItem{
-				{name: "代理连通性检测", desc: "检测所有代理的连通性和延迟", run: runProxyCheck},
+				{name: "导入代理", desc: "从文件或手动输入批量导入代理地址", run: runProxyImport},
+			{name: "代理连通性检测", desc: "检测所有代理的连通性和延迟", run: runProxyCheck},
 				{name: "删除代理", desc: "选择并删除代理，自动解绑关联账号", run: runProxyDelete},
+				{name: "代理批量重命名", desc: "按 host/地址/前缀规则批量重命名代理", run: runProxyRename},
 				{name: "代理均衡分配", desc: "将超出上限的账号迁移到有空余的代理", run: runProxyRebalance},
 			},
 		},

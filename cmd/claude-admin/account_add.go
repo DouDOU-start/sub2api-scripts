@@ -6,7 +6,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"time"
+	"sync"
 
 	"github.com/charmbracelet/huh"
 
@@ -208,6 +208,23 @@ func runAccountAdd(client *api.Client, model string) {
 		}
 	}
 
+	// 并发量设置
+	concurrency := 1
+	if len(lines) > 1 {
+		concurrencyStr, err := inputText("并发量（同时处理的账号数）", fmt.Sprintf("1~%d，默认 1", len(lines)), "1")
+		if err != nil {
+			fmt.Println("已取消")
+			return
+		}
+		if c, err := strconv.Atoi(concurrencyStr); err == nil && c > 0 {
+			if c > len(lines) {
+				c = len(lines)
+			}
+			concurrency = c
+		}
+		fmt.Printf("%s 并发量: %d\n", infoIcon, concurrency)
+	}
+
 	// 获取已有账号
 	fmt.Printf("\n%s 正在查询已有账号...\n", infoIcon)
 	existingAccounts, err := client.FetchAccountMap(api.AccountListOptions{
@@ -323,81 +340,131 @@ func runAccountAdd(client *api.Client, model string) {
 		return ""
 	}
 
-	fmt.Printf("\n开始处理...\n\n")
+	fmt.Printf("\n开始处理（并发: %d）...\n\n", concurrency)
 
-	var results []addResult
+	// 按原始顺序存放结果
+	results := make([]addResult, len(lines))
 
-	for i, line := range lines {
-		parts := strings.SplitN(line, "----", 3)
-		if len(parts) != 3 {
-			fmt.Printf("[%d/%d] %s 格式错误，跳过: %s\n", i+1, len(lines), failIcon, line)
-			results = append(results, addResult{email: line, status: addCreateFail, detail: "格式错误"})
-			continue
-		}
-		email := strings.TrimSpace(parts[0])
-		sessionKey := strings.TrimSpace(parts[2])
-
-		currentProxy := getProxy(i)
-
-		if proxyName := getProxyName(i); proxyName != "" {
-			fmt.Printf("[%d/%d] %s (代理: %s)", i+1, len(lines), email, proxyName)
-		} else {
-			fmt.Printf("[%d/%d] %s", i+1, len(lines), email)
-		}
-
-		// 检查已存在
-		if existing, ok := existingAccounts[email]; ok {
-			result := handleExistingAccount(client, email, existing, currentProxy, selectedGroupIDs)
-			results = append(results, result)
-			continue
-		}
-		fmt.Println()
-
-		// 认证
-		fmt.Printf("  认证中...")
-		tokenInfo, err := client.CookieAuth(sessionKey, currentProxy, pcfg.accountType)
-		if err != nil {
-			fmt.Printf(" %s %v\n", failIcon, err)
-			results = append(results, addResult{email: email, status: addAuthFail, detail: err.Error()})
-			continue
-		}
-		fmt.Printf(" %s\n", successIcon)
-
-		// 创建
-		fmt.Printf("  创建账号...")
-		req := api.BuildCreateRequest(email, tokenInfo, currentProxy, selectedGroupIDs, pcfg.platform, pcfg.accountType)
-		accountID, err := client.CreateAccount(req)
-		if err != nil {
-			fmt.Printf(" %s %v\n", failIcon, err)
-			results = append(results, addResult{email: email, status: addCreateFail, detail: err.Error()})
-			continue
-		}
-		fmt.Printf(" %s (ID: %d)\n", successIcon, accountID)
-
-		// 测试
-		fmt.Printf("  测试连接...")
-		testErr := client.TestAccount(accountID, model)
-		if testErr != nil {
-			fmt.Printf(" %s %v\n", failIcon, testErr)
-			fmt.Printf("  关闭调度...")
-			if disableErr := client.DisableSchedule(accountID, testErr.Error()); disableErr != nil {
-				fmt.Printf(" %s %v\n", failIcon, disableErr)
-			} else {
-				fmt.Printf(" %s\n", successIcon)
-			}
-			results = append(results, addResult{email: email, status: addTestFail, detail: testErr.Error(), accountID: accountID})
-		} else {
-			fmt.Printf(" %s\n", successIcon)
-			results = append(results, addResult{email: email, status: addSuccess, detail: "-", accountID: accountID})
-		}
-
-		if i < len(lines)-1 {
-			time.Sleep(500 * time.Millisecond)
-		}
+	type task struct {
+		index int
+		line  string
 	}
+	taskCh := make(chan task, len(lines))
+	for i, line := range lines {
+		taskCh <- task{index: i, line: line}
+	}
+	close(taskCh)
+
+	var mu sync.Mutex // 保护终端输出
+	var wg sync.WaitGroup
+	total := len(lines)
+
+	for w := 0; w < concurrency; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for t := range taskCh {
+				i, line := t.index, t.line
+				result := processOneAccount(client, i, total, line, getProxy(i), getProxyName(i), existingAccounts, selectedGroupIDs, pcfg, model, &mu)
+				results[i] = result
+			}
+		}()
+	}
+
+	wg.Wait()
 
 	// 输出汇总
 	printAddResults(results)
+}
+
+// processOneAccount 处理单个账号的添加流程（线程安全）
+func processOneAccount(
+	client *api.Client, i, total int, line string,
+	currentProxy *int64, proxyName string,
+	existingAccounts map[string]*api.Account,
+	selectedGroupIDs []int64, pcfg platformConfig, model string,
+	mu *sync.Mutex,
+) addResult {
+	parts := strings.SplitN(line, "----", 3)
+	if len(parts) != 3 {
+		mu.Lock()
+		fmt.Printf("[%d/%d] %s 格式错误，跳过: %s\n", i+1, total, failIcon, line)
+		mu.Unlock()
+		return addResult{email: line, status: addCreateFail, detail: "格式错误"}
+	}
+	email := strings.TrimSpace(parts[0])
+	sessionKey := strings.TrimSpace(parts[2])
+
+	prefix := fmt.Sprintf("[%d/%d] %s", i+1, total, email)
+	if proxyName != "" {
+		prefix += fmt.Sprintf(" (代理: %s)", proxyName)
+	}
+
+	// 检查已存在
+	if existing, ok := existingAccounts[email]; ok {
+		mu.Lock()
+		fmt.Printf("%s", prefix)
+		result := handleExistingAccount(client, email, existing, currentProxy, selectedGroupIDs)
+		mu.Unlock()
+		return result
+	}
+
+	// 认证
+	mu.Lock()
+	fmt.Printf("%s\n  认证中...", prefix)
+	mu.Unlock()
+
+	tokenInfo, err := client.CookieAuth(sessionKey, currentProxy, pcfg.accountType)
+	if err != nil {
+		mu.Lock()
+		fmt.Printf(" %s %v\n", failIcon, err)
+		mu.Unlock()
+		return addResult{email: email, status: addAuthFail, detail: err.Error()}
+	}
+	mu.Lock()
+	fmt.Printf(" %s\n", successIcon)
+	mu.Unlock()
+
+	// 创建
+	mu.Lock()
+	fmt.Printf("  [%s] 创建账号...", email)
+	mu.Unlock()
+
+	req := api.BuildCreateRequest(email, tokenInfo, currentProxy, selectedGroupIDs, pcfg.platform, pcfg.accountType)
+	accountID, err := client.CreateAccount(req)
+	if err != nil {
+		mu.Lock()
+		fmt.Printf(" %s %v\n", failIcon, err)
+		mu.Unlock()
+		return addResult{email: email, status: addCreateFail, detail: err.Error()}
+	}
+	mu.Lock()
+	fmt.Printf(" %s (ID: %d)\n", successIcon, accountID)
+	mu.Unlock()
+
+	// 测试
+	mu.Lock()
+	fmt.Printf("  [%s] 测试连接...", email)
+	mu.Unlock()
+
+	testErr := client.TestAccount(accountID, model)
+	if testErr != nil {
+		mu.Lock()
+		fmt.Printf(" %s %v\n", failIcon, testErr)
+		fmt.Printf("  [%s] 关闭调度...", email)
+		if disableErr := client.DisableSchedule(accountID, testErr.Error()); disableErr != nil {
+			fmt.Printf(" %s %v\n", failIcon, disableErr)
+		} else {
+			fmt.Printf(" %s\n", successIcon)
+		}
+		mu.Unlock()
+		return addResult{email: email, status: addTestFail, detail: testErr.Error(), accountID: accountID}
+	}
+
+	mu.Lock()
+	fmt.Printf(" %s\n", successIcon)
+	mu.Unlock()
+	return addResult{email: email, status: addSuccess, detail: "-", accountID: accountID}
 }
 
 func handleExistingAccount(client *api.Client, email string, existing *api.Account, selectedProxy *int64, selectedGroupIDs []int64) addResult {
