@@ -1,0 +1,160 @@
+package main
+
+import (
+	"strings"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+
+	"sub2api-scripts/internal/api"
+)
+
+// 菜单项
+type menuItem struct {
+	name string
+	desc string
+	run  func(client *api.Client, model string)
+}
+
+// 菜单分组
+type menuGroup struct {
+	title string
+	items []menuItem
+}
+
+type menuModel struct {
+	client   *api.Client
+	model    string
+	groups   []menuGroup
+	cursor   int
+	allItems []menuItem
+	selected *menuItem // 选中的菜单项，退出后由 main 执行
+	quitting bool
+}
+
+func newMenuModel(client *api.Client, model string) menuModel {
+	groups := []menuGroup{
+		{
+			title: "账号管理",
+			items: []menuItem{
+				{name: "批量添加账号", desc: "从文件读取账号信息，批量添加到 sub2api", run: runAccountAdd},
+				{name: "协议状态扫描", desc: "扫描所有账号，识别需要接受协议的账号", run: runAccountScan},
+				{name: "批量更新缓存", desc: "批量更新所有账号的缓存 TTL 配置", run: runAccountCache},
+			},
+		},
+		{
+			title: "代理管理",
+			items: []menuItem{
+				{name: "代理连通性检测", desc: "检测所有代理连通性，支持删除异常代理", run: runProxyCheck},
+				{name: "代理均衡分配", desc: "将超出上限的账号迁移到有空余的代理", run: runProxyRebalance},
+			},
+		},
+	}
+
+	var all []menuItem
+	for _, g := range groups {
+		all = append(all, g.items...)
+	}
+
+	return menuModel{
+		client:   client,
+		model:    model,
+		groups:   groups,
+		allItems: all,
+	}
+}
+
+func (m menuModel) Init() tea.Cmd {
+	return nil
+}
+
+func (m menuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "q", "ctrl+c":
+			m.quitting = true
+			return m, tea.Quit
+		case "up", "k":
+			if m.cursor > 0 {
+				m.cursor--
+			}
+		case "down", "j":
+			if m.cursor < len(m.allItems)-1 {
+				m.cursor++
+			}
+		case "enter":
+			// 记录选中项，退出 bubbletea，由 main 循环执行
+			item := m.allItems[m.cursor]
+			m.selected = &item
+			return m, tea.Quit
+		}
+	}
+	return m, nil
+}
+
+// 样式
+var (
+	titleStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("170")).
+			MarginBottom(1)
+
+	groupStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("240")).
+			Bold(true).
+			MarginTop(1)
+
+	itemStyle = lipgloss.NewStyle().
+			PaddingLeft(2)
+
+	selectedStyle = lipgloss.NewStyle().
+			PaddingLeft(2).
+			Foreground(lipgloss.Color("170")).
+			Bold(true)
+
+	descStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("240"))
+
+	helpStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("241")).
+			MarginTop(1)
+)
+
+func (m menuModel) View() string {
+	if m.quitting || m.selected != nil {
+		return ""
+	}
+
+	var b strings.Builder
+
+	b.WriteString(titleStyle.Render("  Claude Admin - 账号代理管理"))
+	b.WriteString("\n")
+
+	idx := 0
+	for _, g := range m.groups {
+		b.WriteString(groupStyle.Render("  " + g.title))
+		b.WriteString("\n")
+
+		for _, item := range g.items {
+			cursor := "  "
+			style := itemStyle
+			if idx == m.cursor {
+				cursor = "▸ "
+				style = selectedStyle
+			}
+
+			line := style.Render(cursor + item.name)
+			if idx == m.cursor {
+				line += " " + descStyle.Render(item.desc)
+			}
+			b.WriteString(line)
+			b.WriteString("\n")
+			idx++
+		}
+	}
+
+	b.WriteString(helpStyle.Render("  ↑/↓ 移动  enter 选择  q 退出"))
+
+	return b.String()
+}

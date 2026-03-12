@@ -113,3 +113,9 @@ func (c *Client) Put(path string, body any) (*APIResponse, error) {
 	apiResp, _, err := c.doRequest("PUT", path, body)
 	return apiResp, err
 }
+
+// Delete 发送 DELETE 请求
+func (c *Client) Delete(path string) (*APIResponse, error) {
+	apiResp, _, err := c.doRequest("DELETE", path, nil)
+	return apiResp, err
+}

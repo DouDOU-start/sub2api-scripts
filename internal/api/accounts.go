@@ -58,13 +58,19 @@ func (c *Client) FetchAccountMap(opts AccountListOptions) (map[string]*Account, 
 }
 
 // CookieAuth 使用 session_key 换取 token
-func (c *Client) CookieAuth(sessionKey string, proxyID *int64) (*TokenInfo, error) {
+// accountType: "oauth" 走 /cookie-auth，"setup-token" 走 /setup-token-cookie-auth
+func (c *Client) CookieAuth(sessionKey string, proxyID *int64, accountType string) (*TokenInfo, error) {
 	reqBody := map[string]any{"code": sessionKey}
 	if proxyID != nil {
 		reqBody["proxy_id"] = *proxyID
 	}
 
-	apiResp, err := c.Post("/api/v1/admin/accounts/cookie-auth", reqBody)
+	path := "/api/v1/admin/accounts/cookie-auth"
+	if accountType == "setup-token" {
+		path = "/api/v1/admin/accounts/setup-token-cookie-auth"
+	}
+
+	apiResp, err := c.Post(path, reqBody)
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +94,7 @@ func (c *Client) CookieAuth(sessionKey string, proxyID *int64) (*TokenInfo, erro
 }
 
 // BuildCreateRequest 根据 token 信息构建创建账号请求
-func BuildCreateRequest(email string, token *TokenInfo, proxyID *int64, groupIDs []int64) CreateAccountRequest {
+func BuildCreateRequest(email string, token *TokenInfo, proxyID *int64, groupIDs []int64, platform, accountType string) CreateAccountRequest {
 	extra := map[string]any{
 		"enable_tls_fingerprint":      true,
 		"session_id_masking_enabled":  true,
@@ -107,8 +113,8 @@ func BuildCreateRequest(email string, token *TokenInfo, proxyID *int64, groupIDs
 
 	req := CreateAccountRequest{
 		Name:        email,
-		Platform:    "anthropic",
-		Type:        "oauth",
+		Platform:    platform,
+		Type:        accountType,
 		Credentials: token.Raw,
 		Concurrency: 10,
 		Priority:    1,
@@ -143,6 +149,17 @@ func (c *Client) CreateAccount(req CreateAccountRequest) (int64, error) {
 func (c *Client) UpdateAccount(accountID int64, req UpdateAccountRequest) error {
 	path := fmt.Sprintf("/api/v1/admin/accounts/%d", accountID)
 	_, err := c.Put(path, req)
+	return err
+}
+
+// UnbindProxy 解绑账号的代理（proxy_id 设为 0）
+func (c *Client) UnbindProxy(accountID int64) error {
+	path := fmt.Sprintf("/api/v1/admin/accounts/%d", accountID)
+	body := map[string]any{
+		"proxy_id":                   0,
+		"confirm_mixed_channel_risk": true,
+	}
+	_, err := c.Put(path, body)
 	return err
 }
 
