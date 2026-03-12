@@ -45,7 +45,8 @@ func newMenuModel(client *api.Client, model string) menuModel {
 		{
 			title: "代理管理",
 			items: []menuItem{
-				{name: "代理连通性检测", desc: "检测所有代理连通性，支持删除异常代理", run: runProxyCheck},
+				{name: "代理连通性检测", desc: "检测所有代理的连通性和延迟", run: runProxyCheck},
+				{name: "删除代理", desc: "选择并删除代理，自动解绑关联账号", run: runProxyDelete},
 				{name: "代理均衡分配", desc: "将超出上限的账号迁移到有空余的代理", run: runProxyRebalance},
 			},
 		},

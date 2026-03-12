@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/charmbracelet/huh"
-
 	"sub2api-scripts/internal/api"
 )
 
@@ -14,7 +12,7 @@ func runProxyCheck(client *api.Client, _ string) {
 
 	// 获取代理列表
 	fmt.Printf("%s 正在获取代理列表...\n", infoIcon)
-	proxies, err := client.FetchProxies()
+	proxies, err := client.FetchProxiesPaginated("")
 	if err != nil {
 		fmt.Printf("%s 获取代理列表失败: %v\n", failIcon, err)
 		return
@@ -113,104 +111,7 @@ func runProxyCheck(client *api.Client, _ string) {
 	}
 	fmt.Println()
 
-	if len(failList) == 0 {
-		fmt.Printf("%s 所有代理均正常，无需处理\n", successIcon)
-		return
+	if len(failList) > 0 {
+		fmt.Printf("\n%s 有 %d 条异常代理，可通过「删除代理」功能处理\n", warnIcon, len(failList))
 	}
-
-	// 交互选择删除
-	options := make([]huh.Option[int], len(failList))
-	for i, r := range failList {
-		label := fmt.Sprintf("[ID:%d] %s (%d 个账号)", r.proxy.ID, r.proxy.Name, r.accCount)
-		options[i] = huh.NewOption(label, i)
-	}
-
-	var selected []int
-	err = huh.NewMultiSelect[int]().
-		Title("选择要删除的异常代理（空选跳过）").
-		Options(options...).
-		Value(&selected).
-		Run()
-	if err != nil || len(selected) == 0 {
-		fmt.Println("已跳过")
-		return
-	}
-
-	// 收集要删除的代理
-	var toDelete []proxyResult
-	for _, idx := range selected {
-		toDelete = append(toDelete, failList[idx])
-	}
-
-	totalAccounts := 0
-	for _, r := range toDelete {
-		totalAccounts += r.accCount
-	}
-
-	fmt.Printf("\n将删除以下 %d 条代理", len(toDelete))
-	if totalAccounts > 0 {
-		fmt.Printf("（需先解绑 %d 个账号）", totalAccounts)
-	}
-	fmt.Println(":")
-	for _, r := range toDelete {
-		fmt.Printf("  [ID:%d] %s (%d 个账号)\n", r.proxy.ID, r.proxy.Name, r.accCount)
-	}
-
-	if !confirm("确认删除？") {
-		fmt.Println("已取消")
-		return
-	}
-
-	deleteSet := make(map[int64]bool)
-	for _, r := range toDelete {
-		deleteSet[r.proxy.ID] = true
-	}
-
-	// 步骤1: 解绑账号
-	if totalAccounts > 0 {
-		fmt.Println("\n步骤 1/2: 解绑账号...")
-		unbindOK, unbindFail := 0, 0
-		for _, acc := range accounts {
-			if acc.ProxyID == nil || !deleteSet[*acc.ProxyID] {
-				continue
-			}
-			fmt.Printf("  %s 解绑代理...", acc.Name)
-			err := client.UnbindProxy(acc.ID)
-			if err != nil {
-				fmt.Printf(" %s %v\n", failIcon, err)
-				unbindFail++
-			} else {
-				fmt.Printf(" %s\n", successIcon)
-				unbindOK++
-			}
-			time.Sleep(200 * time.Millisecond)
-		}
-		fmt.Printf("解绑完成: 成功 %d，失败 %d\n", unbindOK, unbindFail)
-
-		if unbindFail > 0 {
-			fmt.Printf("%s 部分账号解绑失败，无法安全删除代理\n", failIcon)
-			return
-		}
-	} else {
-		fmt.Println("\n步骤 1/2: 无需解绑账号")
-	}
-
-	// 步骤2: 删除代理
-	fmt.Println("步骤 2/2: 删除代理...")
-	deleteOK, deleteFail := 0, 0
-	for _, r := range toDelete {
-		fmt.Printf("  删除 [ID:%d] %s ...", r.proxy.ID, r.proxy.Name)
-		err := client.DeleteProxy(r.proxy.ID)
-		if err != nil {
-			fmt.Printf(" %s %v\n", failIcon, err)
-			deleteFail++
-		} else {
-			fmt.Printf(" %s\n", successIcon)
-			deleteOK++
-		}
-		time.Sleep(200 * time.Millisecond)
-	}
-
-	fmt.Printf("\n%s 全部完成: 解绑 %d 个账号，删除 %d/%d 个代理\n",
-		successIcon, totalAccounts, deleteOK, len(toDelete))
 }
