@@ -40,6 +40,7 @@ func newMenuModel(client *api.Client, model string) menuModel {
 				{name: "批量添加账号", desc: "从文件读取账号信息，批量添加到 sub2api", run: runAccountAdd},
 				{name: "协议状态扫描", desc: "扫描所有账号，识别需要接受协议的账号", run: runAccountScan},
 				{name: "批量更新缓存", desc: "批量更新所有账号的缓存 TTL 配置", run: runAccountCache},
+				{name: "清理异常账号代理", desc: "检测异常账号连通性，解绑确认不可用的代理", run: runAccountCleanup},
 			},
 		},
 		{

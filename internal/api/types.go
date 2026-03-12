@@ -27,6 +27,7 @@ type Account struct {
 	ProxyID     *int64  `json:"proxy_id"`
 	GroupIDs    []int64 `json:"group_ids"`
 	Concurrency int     `json:"concurrency"`
+	Schedulable bool    `json:"schedulable"`
 }
 
 // TokenInfo cookie-auth 返回的 token 信息
