@@ -172,3 +172,21 @@ func (c *Client) DisableSchedule(accountID int64, reason string) error {
 		Notes:       &notes,
 	})
 }
+
+// RefreshToken 刷新账号令牌
+func (c *Client) RefreshToken(accountID int64) error {
+	path := fmt.Sprintf("/api/v1/admin/accounts/%d/refresh", accountID)
+	_, err := c.Post(path, nil)
+	return err
+}
+
+// EnableSchedule 开启账号调度并清除错误状态
+func (c *Client) EnableSchedule(accountID int64) error {
+	schedulable := true
+	notes := ""
+	return c.UpdateAccount(accountID, UpdateAccountRequest{
+		Status:      "active",
+		Schedulable: &schedulable,
+		Notes:       &notes,
+	})
+}

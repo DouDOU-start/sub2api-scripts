@@ -41,14 +41,16 @@ func newMenuModel(client *api.Client, model string) menuModel {
 				{name: "批量添加账号", desc: "从文件读取账号信息，批量添加到 sub2api", run: runAccountAdd},
 				{name: "协议状态扫描", desc: "扫描所有账号，识别需要接受协议的账号", run: runAccountScan},
 				{name: "批量更新缓存", desc: "批量更新所有账号的缓存 TTL 配置", run: runAccountCache},
-				{name: "清理异常账号代理", desc: "检测异常账号连通性，解绑确认不可用的代理", run: runAccountCleanup},
+				{name: "批量恢复错误账号", desc: "测试 error/调度关闭的账号，成功则自动恢复", run: runAccountRecover},
+			{name: "清理异常账号代理", desc: "检测异常账号连通性，解绑确认不可用的代理", run: runAccountCleanup},
+				{name: "批量重新授权", desc: "用 SK 文件重新授权已有账号，更新 Token（不新建账号）", run: runAccountReauth},
 			},
 		},
 		{
 			title: "代理管理",
 			items: []menuItem{
 				{name: "导入代理", desc: "从文件或手动输入批量导入代理地址", run: runProxyImport},
-			{name: "代理连通性检测", desc: "检测所有代理的连通性和延迟", run: runProxyCheck},
+				{name: "代理连通性检测", desc: "检测所有代理的连通性和延迟", run: runProxyCheck},
 				{name: "删除代理", desc: "选择并删除代理，自动解绑关联账号", run: runProxyDelete},
 				{name: "代理批量重命名", desc: "按 host/地址/前缀规则批量重命名代理", run: runProxyRename},
 				{name: "代理均衡分配", desc: "将超出上限的账号迁移到有空余的代理", run: runProxyRebalance},

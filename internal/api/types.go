@@ -20,14 +20,16 @@ type PaginatedData struct {
 
 // Account 账号信息
 type Account struct {
-	ID          int64   `json:"id"`
-	Name        string  `json:"name"`
-	Status      string  `json:"status"`
-	Type        string  `json:"type"`
-	ProxyID     *int64  `json:"proxy_id"`
-	GroupIDs    []int64 `json:"group_ids"`
-	Concurrency int     `json:"concurrency"`
-	Schedulable bool    `json:"schedulable"`
+	ID          int64          `json:"id"`
+	Name        string         `json:"name"`
+	Platform    string         `json:"platform"`
+	Status      string         `json:"status"`
+	Type        string         `json:"type"`
+	Credentials map[string]any `json:"credentials"`
+	ProxyID     *int64         `json:"proxy_id"`
+	GroupIDs    []int64        `json:"group_ids"`
+	Concurrency int            `json:"concurrency"`
+	Schedulable bool           `json:"schedulable"`
 }
 
 // TokenInfo cookie-auth 返回的 token 信息
@@ -113,6 +115,7 @@ type UpdateAccountRequest struct {
 	GroupIDs                []int64        `json:"group_ids,omitempty"`
 	Concurrency             *int           `json:"concurrency,omitempty"`
 	Priority                *int           `json:"priority,omitempty"`
+	Credentials             map[string]any `json:"credentials,omitempty"`
 	Extra                   map[string]any `json:"extra,omitempty"`
 	Schedulable             *bool          `json:"schedulable,omitempty"`
 	Status                  string         `json:"status,omitempty"`
