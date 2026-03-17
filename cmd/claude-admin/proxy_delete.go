@@ -24,6 +24,7 @@ func runProxyDelete(client *api.Client, _ string) {
 	modeIdx, err := selectOne("删除方式", []string{
 		"手动选择代理",
 		"按地址列表批量删除（从文件或粘贴输入）",
+		"删除所有代理",
 	})
 	if err != nil {
 		fmt.Println("已取消")
@@ -63,10 +64,13 @@ func runProxyDelete(client *api.Client, _ string) {
 	var toDelete []deleteItem
 	totalAccounts := 0
 
-	if modeIdx == 0 {
+	switch modeIdx {
+	case 0:
 		toDelete, totalAccounts = selectProxiesToDelete(proxies, accCountMap)
-	} else {
+	case 1:
 		toDelete, totalAccounts = matchProxiesToDelete(proxies, accCountMap)
+	case 2:
+		toDelete, totalAccounts = allProxiesToDelete(proxies, accCountMap)
 	}
 
 	if len(toDelete) == 0 {
@@ -145,7 +149,7 @@ func runProxyDelete(client *api.Client, _ string) {
 func selectProxiesToDelete(proxies []api.Proxy, accCountMap map[int64]int) ([]deleteItem, int) {
 	options := make([]huh.Option[int], len(proxies))
 	for i, p := range proxies {
-		label := fmt.Sprintf("[ID:%d] %s (%s) - %d 个账号", p.ID, p.Name, p.Address, accCountMap[p.ID])
+		label := fmt.Sprintf("[ID:%d] %s (%s:%d) - %d 个账号", p.ID, p.Name, p.Host, p.Port, accCountMap[p.ID])
 		options[i] = huh.NewOption(label, i)
 	}
 
@@ -257,5 +261,17 @@ func matchProxiesToDelete(proxies []api.Proxy, accCountMap map[int64]int) ([]del
 	}
 
 	fmt.Printf("%s 匹配到 %d 条代理\n", infoIcon, len(result))
+	return result, total
+}
+
+// allProxiesToDelete 选择所有代理
+func allProxiesToDelete(proxies []api.Proxy, accCountMap map[int64]int) ([]deleteItem, int) {
+	var result []deleteItem
+	total := 0
+	for _, p := range proxies {
+		cnt := accCountMap[p.ID]
+		result = append(result, deleteItem{proxy: p, accCount: cnt})
+		total += cnt
+	}
 	return result, total
 }

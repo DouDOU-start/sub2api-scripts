@@ -44,6 +44,7 @@ func newMenuModel(client *api.Client, model string) menuModel {
 				{name: "批量恢复错误账号", desc: "测试 error/调度关闭的账号，成功则自动恢复", run: runAccountRecover},
 			{name: "清理异常账号代理", desc: "检测异常账号连通性，解绑确认不可用的代理", run: runAccountCleanup},
 				{name: "批量重新授权", desc: "用 SK 文件重新授权已有账号，更新 Token（不新建账号）", run: runAccountReauth},
+				{name: "批量删除异常账号", desc: "删除所有 error/调度关闭的异常账号", run: runAccountDeleteError},
 			},
 		},
 		{
@@ -54,6 +55,8 @@ func newMenuModel(client *api.Client, model string) menuModel {
 				{name: "删除代理", desc: "选择并删除代理，自动解绑关联账号", run: runProxyDelete},
 				{name: "代理批量重命名", desc: "按 host/地址/前缀规则批量重命名代理", run: runProxyRename},
 				{name: "代理均衡分配", desc: "将超出上限的账号迁移到有空余的代理", run: runProxyRebalance},
+				{name: "导出代理 IP", desc: "导出所有代理的完整地址到文件", run: runProxyExportIP},
+				{name: "解绑所有代理并删除", desc: "解绑所有账号的代理绑定，然后删除全部代理", run: runAccountUnbindAndDeleteProxies},
 			},
 		},
 	}
