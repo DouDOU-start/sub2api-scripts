@@ -94,12 +94,12 @@ func (c *Client) CookieAuth(sessionKey string, proxyID *int64, accountType strin
 }
 
 // BuildCreateRequest 根据 token 信息构建创建账号请求
-func BuildCreateRequest(email string, token *TokenInfo, proxyID *int64, groupIDs []int64, platform, accountType string) CreateAccountRequest {
+func BuildCreateRequest(email string, token *TokenInfo, proxyID *int64, groupIDs []int64, platform, accountType string, quota QuotaConfig) CreateAccountRequest {
 	extra := map[string]any{
-		"enable_tls_fingerprint":      true,
-		"session_id_masking_enabled":  true,
-		"cache_ttl_override_enabled":  true,
-		"cache_ttl_override_target":   "5m",
+		"enable_tls_fingerprint":     true,
+		"session_id_masking_enabled": true,
+		"cache_ttl_override_enabled": true,
+		"cache_ttl_override_target":  "5m",
 	}
 	if token.OrgUUID != "" {
 		extra["org_uuid"] = token.OrgUUID
@@ -111,6 +111,18 @@ func BuildCreateRequest(email string, token *TokenInfo, proxyID *int64, groupIDs
 		extra["email_address"] = token.EmailAddress
 	}
 
+	// 配额限速配置
+	if quota.BaseRPM > 0 {
+		extra["base_rpm"] = quota.BaseRPM
+	}
+	if quota.MaxSessions > 0 {
+		extra["max_sessions"] = quota.MaxSessions
+		extra["session_idle_timeout_minutes"] = quota.SessionIdleTimeoutMinutes
+	}
+	if quota.WindowCostLimit > 0 {
+		extra["window_cost_limit"] = quota.WindowCostLimit
+	}
+
 	req := CreateAccountRequest{
 		Name:        email,
 		Platform:    platform,
@@ -118,6 +130,14 @@ func BuildCreateRequest(email string, token *TokenInfo, proxyID *int64, groupIDs
 		Credentials: token.Raw,
 		Concurrency: 10,
 		Priority:    1,
+	}
+	if quota.RateMultiplier > 0 && quota.RateMultiplier != 1.0 {
+		rm := quota.RateMultiplier
+		req.RateMultiplier = &rm
+	}
+	if quota.LoadFactor > 0 {
+		lf := quota.LoadFactor
+		req.LoadFactor = &lf
 	}
 	if len(extra) > 0 {
 		req.Extra = extra
@@ -129,6 +149,27 @@ func BuildCreateRequest(email string, token *TokenInfo, proxyID *int64, groupIDs
 		req.GroupIDs = groupIDs
 	}
 	return req
+}
+
+// BuildQuotaExtra 根据配额配置构建 Extra 字段（用于更新已有账号）
+func BuildQuotaExtra(quota QuotaConfig) map[string]any {
+	extra := map[string]any{
+		"enable_tls_fingerprint":     true,
+		"session_id_masking_enabled": true,
+		"cache_ttl_override_enabled": true,
+		"cache_ttl_override_target":  "5m",
+	}
+	if quota.BaseRPM > 0 {
+		extra["base_rpm"] = quota.BaseRPM
+	}
+	if quota.MaxSessions > 0 {
+		extra["max_sessions"] = quota.MaxSessions
+		extra["session_idle_timeout_minutes"] = quota.SessionIdleTimeoutMinutes
+	}
+	if quota.WindowCostLimit > 0 {
+		extra["window_cost_limit"] = quota.WindowCostLimit
+	}
+	return extra
 }
 
 // CreateAccount 创建账号
@@ -177,6 +218,13 @@ func (c *Client) DisableSchedule(accountID int64, reason string) error {
 func (c *Client) RefreshToken(accountID int64) error {
 	path := fmt.Sprintf("/api/v1/admin/accounts/%d/refresh", accountID)
 	_, err := c.Post(path, nil)
+	return err
+}
+
+// DeleteAccount 删除账号
+func (c *Client) DeleteAccount(accountID int64) error {
+	path := fmt.Sprintf("/api/v1/admin/accounts/%d", accountID)
+	_, err := c.Delete(path)
 	return err
 }
 

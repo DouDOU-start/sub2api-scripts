@@ -156,7 +156,7 @@ func runAccountAdd(client *api.Client, model string) {
 		}
 		opts := make([]string, len(proxies))
 		for i, p := range proxies {
-			opts[i] = fmt.Sprintf("[ID:%d] %s (%s)", p.ID, p.Name, p.Address)
+			opts[i] = fmt.Sprintf("[ID:%d] %s (%s:%d)", p.ID, p.Name, p.Host, p.Port)
 		}
 		idx, err := selectOne("选择代理", opts)
 		if err != nil {
@@ -206,6 +206,12 @@ func runAccountAdd(client *api.Client, model string) {
 				selectedGroupIDs = append(selectedGroupIDs, groups[idx].ID)
 			}
 		}
+	}
+
+	// 配额限速配置（仅 Anthropic OAuth/SetupToken 账号）
+	quota := api.DefaultQuotaConfig()
+	if pcfg.platform == "anthropic" {
+		quota = promptQuotaConfig()
 	}
 
 	// 并发量设置
@@ -365,7 +371,7 @@ func runAccountAdd(client *api.Client, model string) {
 			defer wg.Done()
 			for t := range taskCh {
 				i, line := t.index, t.line
-				result := processOneAccount(client, i, total, line, getProxy(i), getProxyName(i), existingAccounts, selectedGroupIDs, pcfg, model, &mu)
+				result := processOneAccount(client, i, total, line, getProxy(i), getProxyName(i), existingAccounts, selectedGroupIDs, pcfg, model, quota.ForIndex(i), &mu)
 				results[i] = result
 			}
 		}()
@@ -383,7 +389,7 @@ func processOneAccount(
 	currentProxy *int64, proxyName string,
 	existingAccounts map[string]*api.Account,
 	selectedGroupIDs []int64, pcfg platformConfig, model string,
-	mu *sync.Mutex,
+	quota api.QuotaConfig, mu *sync.Mutex,
 ) addResult {
 	parts := strings.SplitN(line, "----", 3)
 	if len(parts) != 3 {
@@ -404,7 +410,7 @@ func processOneAccount(
 	if existing, ok := existingAccounts[email]; ok {
 		mu.Lock()
 		fmt.Printf("%s", prefix)
-		result := handleExistingAccount(client, email, existing, currentProxy, selectedGroupIDs)
+		result := handleExistingAccount(client, email, existing, currentProxy, selectedGroupIDs, quota)
 		mu.Unlock()
 		return result
 	}
@@ -430,7 +436,7 @@ func processOneAccount(
 	fmt.Printf("  [%s] 创建账号...", email)
 	mu.Unlock()
 
-	req := api.BuildCreateRequest(email, tokenInfo, currentProxy, selectedGroupIDs, pcfg.platform, pcfg.accountType)
+	req := api.BuildCreateRequest(email, tokenInfo, currentProxy, selectedGroupIDs, pcfg.platform, pcfg.accountType, quota)
 	accountID, err := client.CreateAccount(req)
 	if err != nil {
 		mu.Lock()
@@ -467,7 +473,7 @@ func processOneAccount(
 	return addResult{email: email, status: addSuccess, detail: "-", accountID: accountID}
 }
 
-func handleExistingAccount(client *api.Client, email string, existing *api.Account, selectedProxy *int64, selectedGroupIDs []int64) addResult {
+func handleExistingAccount(client *api.Client, email string, existing *api.Account, selectedProxy *int64, selectedGroupIDs []int64, quota api.QuotaConfig) addResult {
 	var updates []string
 	req := api.UpdateAccountRequest{ConfirmMixedChannelRisk: true}
 
@@ -487,13 +493,16 @@ func handleExistingAccount(client *api.Client, email string, existing *api.Accou
 
 	p := 1
 	req.Priority = &p
-	req.Extra = map[string]any{
-		"enable_tls_fingerprint":     true,
-		"session_id_masking_enabled": true,
-		"cache_ttl_override_enabled": true,
-		"cache_ttl_override_target":  "5m",
+	req.Extra = api.BuildQuotaExtra(quota)
+	if quota.RateMultiplier > 0 && quota.RateMultiplier != 1.0 {
+		rm := quota.RateMultiplier
+		req.RateMultiplier = &rm
 	}
-	updates = append(updates, "配置")
+	if quota.LoadFactor > 0 {
+		lf := quota.LoadFactor
+		req.LoadFactor = &lf
+	}
+	updates = append(updates, "配置+配额")
 
 	desc := strings.Join(updates, "+")
 	fmt.Printf(" -> 已存在，同步%s...", desc)
@@ -524,6 +533,126 @@ func readLinesFromFile(path string) []string {
 	}
 	fmt.Printf("%s 从文件 %s 读取到 %d 个账号\n", successIcon, path, len(lines))
 	return lines
+}
+
+// promptQuotaConfig 交互式配置配额限速参数
+func promptQuotaConfig() api.QuotaConfig {
+	quota := api.DefaultQuotaConfig()
+
+	fmt.Printf("\n%s 配额限速配置（基准值: RPM=%d, 最大会话=%d, 超时=%d分钟, 5h费用=$%.0f）\n",
+		infoIcon, quota.BaseRPM, quota.MaxSessions, quota.SessionIdleTimeoutMinutes, quota.WindowCostLimit)
+
+	mode, err := selectOne("配额配置方式", []string{
+		fmt.Sprintf("使用默认值（RPM=%d, 会话=%d, 5h=$%.0f）", quota.BaseRPM, quota.MaxSessions, quota.WindowCostLimit),
+		"自定义配置",
+		"不设置配额限制",
+	})
+	if err != nil || mode == 0 {
+		quota = promptQuotaPercentages(quota)
+		return quota
+	}
+	if mode == 2 {
+		fmt.Printf("%s 不设置配额限制\n", infoIcon)
+		return api.QuotaConfig{}
+	}
+
+	// 自定义配置
+	if v, err := inputText("RPM 基准值（每分钟请求数，0=不限）", "如 60", strconv.Itoa(quota.BaseRPM)); err == nil {
+		if n, e := strconv.Atoi(v); e == nil && n >= 0 {
+			quota.BaseRPM = n
+		}
+	}
+
+	if v, err := inputText("最大并发会话基准值（0=不限）", "如 10", strconv.Itoa(quota.MaxSessions)); err == nil {
+		if n, e := strconv.Atoi(v); e == nil && n >= 0 {
+			quota.MaxSessions = n
+		}
+	}
+
+	if quota.MaxSessions > 0 {
+		if v, err := inputText("会话空闲超时（分钟）", "如 5", strconv.Itoa(quota.SessionIdleTimeoutMinutes)); err == nil {
+			if n, e := strconv.Atoi(v); e == nil && n > 0 {
+				quota.SessionIdleTimeoutMinutes = n
+			}
+		}
+	}
+
+	if v, err := inputText("5h 窗口费用基准值（美元，0=不限）", "如 80", fmt.Sprintf("%.0f", quota.WindowCostLimit)); err == nil {
+		if f, e := strconv.ParseFloat(v, 64); e == nil && f >= 0 {
+			quota.WindowCostLimit = f
+		}
+	}
+
+	if v, err := inputText("计费倍率（默认 1.0）", "如 1.0", "1.0"); err == nil {
+		if f, e := strconv.ParseFloat(v, 64); e == nil && f > 0 {
+			quota.RateMultiplier = f
+		}
+	}
+
+	quota = promptQuotaPercentages(quota)
+	return quota
+}
+
+// promptQuotaPercentages 配置百分比浮动
+func promptQuotaPercentages(quota api.QuotaConfig) api.QuotaConfig {
+	fmt.Printf("\n%s 百分比浮动：输入多个百分比值，每个账号按顺序循环应用\n", infoIcon)
+	fmt.Printf("  例: 输入 \"90 80 120\" → 账号1=基准×90%%, 账号2=基准×80%%, 账号3=基准×120%%, 账号4=基准×90%%...\n")
+	fmt.Printf("  留空或输入 100 = 所有账号使用相同基准值\n")
+
+	v, err := inputText("百分比列表（空格分隔，留空=不浮动）", "如 90 80 120", "")
+	if err != nil || strings.TrimSpace(v) == "" {
+		printQuotaSummary(quota)
+		return quota
+	}
+
+	parts := strings.Fields(v)
+	var pcts []int
+	for _, p := range parts {
+		n, e := strconv.Atoi(p)
+		if e != nil || n <= 0 {
+			fmt.Printf("%s 忽略无效百分比: %s\n", warnIcon, p)
+			continue
+		}
+		pcts = append(pcts, n)
+	}
+
+	if len(pcts) > 0 {
+		// 检查是否全是 100，等于没浮动
+		allSame := true
+		for _, p := range pcts {
+			if p != 100 {
+				allSame = false
+				break
+			}
+		}
+		if !allSame {
+			quota.Percentages = pcts
+			fmt.Printf("%s 百分比浮动: %v（共 %d 档循环）\n", successIcon, pcts, len(pcts))
+			// 展示前几个示例
+			count := len(pcts)
+			if count > 5 {
+				count = 5
+			}
+			for i := 0; i < count; i++ {
+				q := quota.ForIndex(i)
+				fmt.Printf("  账号%d: RPM=%d, 会话=%d, 5h=$%.1f (%d%%)\n",
+					i+1, q.BaseRPM, q.MaxSessions, q.WindowCostLimit, pcts[i])
+			}
+			if len(pcts) > 5 {
+				fmt.Printf("  ... 共 %d 档循环\n", len(pcts))
+			}
+			return quota
+		}
+	}
+
+	printQuotaSummary(quota)
+	return quota
+}
+
+func printQuotaSummary(quota api.QuotaConfig) {
+	fmt.Printf("%s 配额配置: RPM=%d, 会话=%d, 超时=%d分钟, 5h=$%.0f, 倍率=%.1f\n",
+		successIcon, quota.BaseRPM, quota.MaxSessions, quota.SessionIdleTimeoutMinutes,
+		quota.WindowCostLimit, quota.RateMultiplier)
 }
 
 func printAddResults(results []addResult) {
